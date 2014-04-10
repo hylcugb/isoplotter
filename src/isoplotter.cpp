@@ -234,28 +234,14 @@ list<segment_t> merge(list<segment_t> segments,
                       list<n_segment_t> n_segments,
                       uint64_t min_n_domain_len) {
     list<segment_t> result;
+
+    const uint64_t seqlen = max(segments.back().end, n_segments.back().end);
     
-    #if 0
-    cout << "N" << endl;
-    for(auto n_segment: n_segments) {
-        cout << n_segment.start << "\t" << n_segment.end << endl;
-    }
-
-    cout << endl;
-    cout << "non-N" << endl;
-    for(auto segment: segments) {
-        cout << segment.start << "\t" << segment.end << endl;
-    }
-    #endif
-
     for(auto n_segment: n_segments) {
         bool small_n_segment = n_segment.len() <= min_n_domain_len;
 
-        //cout << "N: " << n_segment.start << "\t" << n_segment.end << endl;
         for(auto it_segment = segments.begin(); it_segment != segments.end(); ) {
             segment_t &segment = *it_segment;
-
-            //cout << "  seg: " << segment.start << "\t" << segment.end << endl;
 
             if(segment.start >= n_segment.start) {
                 // Segment is after N island, so simply shift the segment forward
@@ -264,6 +250,7 @@ list<segment_t> merge(list<segment_t> segments,
                 segment.end += n_segment.len();
 
                 if( small_n_segment && (n_segment.end == segment.start) ) {
+                    // It's a small N island, so just prepend it to this segment.
                     segment.start = n_segment.start;
                 }
 
@@ -272,6 +259,7 @@ list<segment_t> merge(list<segment_t> segments,
                 // Segment is before N island, so it requires no further processing.
 
                 if( small_n_segment && (n_segment.start == segment.end) ) {
+                    // It's a small N island, so just append it to this segment.
                     segment.end = n_segment.end;
                 }
 
@@ -280,9 +268,9 @@ list<segment_t> merge(list<segment_t> segments,
                 segments.erase(it_erase);
             } else {
                 // N island is in middle of segment.
-                //assert( (segment.start < n_segment.start) && (segment.end >= n_segment.start) );
                         
                 if( small_n_segment ) {
+                    // It's a small N island, so just insert it into this segment.
                     segment.end += n_segment.len();
                 } else {
                     segment_t segment_before_n = {segment.start, n_segment.start, segment.entropy};
@@ -300,6 +288,29 @@ list<segment_t> merge(list<segment_t> segments,
             result.push_back( {n_segment.start, n_segment.end, 0.0} );
         }
     }
+
+    {
+        // Since we drop the last 1 or 2 windows initially, there's going to be
+        // a gap if the last segment is an N segment. Consistent with Matlab version,
+        // we just insert a tiny segment with the same entropy.
+        auto it_last = --result.end();
+        auto it_prev = --(--result.end());
+
+        if(it_prev->end != it_last->start) {
+            segment_t filler;
+            filler.start = it_prev->end;
+            filler.end = it_last->start;
+            filler.entropy = it_prev->entropy;
+            result.insert(it_last, filler);
+        }
+    }
+
+    // Sanity check
+    assert(result.front().start == 0);
+    for(auto it = result.begin(); next(it) != result.end(); it++) {
+        assert(it->end == next(it)->start);
+    }
+    assert(result.back().end == seqlen);
 
     return result;
 }
@@ -336,7 +347,9 @@ void create_win_gc(char *seq, size_t seqlen, size_t winlen, double **out_gc, siz
         }
     }
 
-    // Note: we ignore any leftover bases for the final window
+    // Note: we ignore any leftover bases beyond a multiple of window length.
+    // Also, we ignore the final window in order to recreate results of Matlab version.
+    out_nwins--;
 }
 
 list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t mindomainlen, size_t min_n_domain_len) {
