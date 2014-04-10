@@ -11,6 +11,15 @@ typedef struct {
     uint64_t n[__nbase];
 } base_count_t;
 
+struct n_segment_t {
+    uint64_t start;
+    uint64_t end;
+
+    uint64_t len() {
+        return end - start;
+    }
+};
+
 struct segment_t {
     uint64_t start;
     uint64_t end;
@@ -21,4 +30,4 @@ struct segment_t {
     }
 };
 
-std::list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen = 32, size_t mindomainlen = 3008);
+std::list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen = 32, size_t mindomainlen = 3008, size_t min_n_domain_len = 50000);

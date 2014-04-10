@@ -1,8 +1,9 @@
 #include <math.h>
-#include <CL/cl.h>
 
+#include <assert.h>
 #include <algorithm>
 #include <iomanip>
+#include <iostream>
 #include <list>
 
 #include "isoplotter.h"
@@ -248,11 +249,124 @@ pair<segment_t, segment_t> divide_segment(double *gc, segment_t segment, double 
     return result;
 }
 
-list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t mindomainlen) {
+list<segment_t> merge(list<segment_t> segments,
+                      list<n_segment_t> n_segments,
+                      uint64_t min_n_domain_len) {
+    list<segment_t> result;
+    
+    #if 0
+    cout << "N" << endl;
+    for(auto n_segment: n_segments) {
+        cout << n_segment.start << "\t" << n_segment.end << endl;
+    }
+
+    cout << endl;
+    cout << "non-N" << endl;
+    for(auto segment: segments) {
+        cout << segment.start << "\t" << segment.end << endl;
+    }
+    #endif
+
+    for(auto n_segment: n_segments) {
+        bool small_n_segment = n_segment.len() <= min_n_domain_len;
+
+        //cout << "N: " << n_segment.start << "\t" << n_segment.end << endl;
+        for(auto it_segment = segments.begin(); it_segment != segments.end(); ) {
+            segment_t &segment = *it_segment;
+
+            //cout << "  seg: " << segment.start << "\t" << segment.end << endl;
+
+            if(segment.start >= n_segment.start) {
+                // Segment is after N island, so simply shift the segment forward
+                // by size of N island.
+                segment.start += n_segment.len();
+                segment.end += n_segment.len();
+
+                if( small_n_segment && (n_segment.end == segment.start) ) {
+                    segment.start = n_segment.start;
+                }
+
+                ++it_segment;
+            } else if(segment.end <= n_segment.start) {
+                // Segment is before N island, so it requires no further processing.
+
+                if( small_n_segment && (n_segment.start == segment.end) ) {
+                    segment.end = n_segment.end;
+                }
+
+                result.push_back(segment);
+                auto it_erase = it_segment++;
+                segments.erase(it_erase);
+            } else {
+                // N island is in middle of segment.
+                //assert( (segment.start < n_segment.start) && (segment.end >= n_segment.start) );
+                        
+                if( small_n_segment ) {
+                    segment.end += n_segment.len();
+                } else {
+                    segment_t segment_before_n = {segment.start, n_segment.start, segment.entropy};
+                    result.push_back(segment_before_n);
+
+                    uint64_t len_after_n = segment.end - segment_before_n.end;
+                    segment.start = n_segment.end;
+                    segment.end = segment.start + len_after_n;
+                }
+                ++it_segment;
+            }
+        }
+
+        if(!small_n_segment) {
+            result.push_back( {n_segment.start, n_segment.end, 0.0} );
+        }
+    }
+
+    return result;
+}
+
+void create_win_gc(char *seq, size_t seqlen, size_t winlen, double **out_gc, size_t &out_nwins, list<n_segment_t> &out_n_segments) {
+    int gc_count = 0;
+    int win_bases_count = 0;
+    
+    out_nwins = 0;
+    *out_gc = new double[seqlen / winlen];
+    
+    size_t i = 0;
+    while(i < seqlen) {
+        char base = seq[i];
+
+        if(base == 'N') {
+            n_segment_t n_segment;
+            n_segment.start = i++;
+            for(; (i < seqlen) && (seq[i] == 'N'); i++) {
+            }
+            n_segment.end = i;
+            out_n_segments.push_back(n_segment);
+        } else {
+            if( (base == 'G') || (base == 'C') ) {
+                gc_count++;
+            }
+            if(++win_bases_count == winlen) {
+                (*out_gc)[out_nwins++] = double(gc_count) / winlen;
+                gc_count = 0;
+                win_bases_count = 0;
+            }
+
+            i++;
+        }
+    }
+
+    // Note: we ignore any leftover bases for the final window
+}
+
+list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t mindomainlen, size_t min_n_domain_len) {
     mindomainlen /= winlen;
 
-    size_t nwins = win_count(seq, seqlen, winlen);
-    double *gc = win_gc(seq, seqlen, winlen);
+    double *gc;
+    size_t nwins;
+    list<n_segment_t> n_segments;
+
+    create_win_gc(seq, seqlen, winlen, &gc, nwins, n_segments);
+
     list<segment_t> segments = { create_segment(0, nwins, entropy(gc, nwins)) };
 
     for(list<segment_t>::iterator it = segments.begin(); it != segments.end(); ) {
@@ -280,11 +394,17 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
         }
     }
 
+    delete [] gc;
+
     for(auto &seg: segments) {
         seg.start = seg.start * winlen;
         seg.end = seg.end * winlen;
     }
-    segments.back().end = seqlen;
+    segments.back().end = nwins * winlen;
 
-    return segments;
+    list<segment_t> result = merge(segments, n_segments, min_n_domain_len);
+
+    result.back().end = (result.back().end / winlen) * winlen;
+
+    return result;
 }
