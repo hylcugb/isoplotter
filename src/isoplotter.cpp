@@ -88,25 +88,6 @@ float stddevf(T *data, size_t n) {
     return (float)sqrt(sum / n);
 }
 
-size_t win_count(char *seq, size_t seqlen, size_t winlen) {
-    return (seqlen / winlen) + (seqlen % winlen ? 1 : 0);
-}
-
-double *win_gc(char *seq, size_t seqlen, size_t winlen) {
-    size_t nwins = win_count(seq, seqlen, winlen);
-    double *gc = new double[nwins];
-
-    for(size_t iwin = 0; iwin < nwins; iwin++) {
-        size_t win_from = iwin * winlen;
-        size_t win_to = min(win_from + winlen, seqlen);
-        base_count_t nbases = count(seq, win_from, win_to);
-	
-        gc[iwin] = double(nbases.n[G] + nbases.n[C]) / winlen;
-    }
-
-    return gc;
-}
-
 double *cumulative_gcmean(double *gcwins, size_t len, bool reverse) {
     double *result = new double[len];
     double accum = 0;
