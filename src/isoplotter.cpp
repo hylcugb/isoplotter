@@ -234,11 +234,10 @@ list<segment_t> merge(list<segment_t> segments,
                       list<n_segment_t> n_segments,
                       uint64_t min_n_domain_len) {
     list<segment_t> result;
-
-    const uint64_t seqlen = max(segments.back().end, n_segments.back().end);
     
     for(auto n_segment: n_segments) {
         bool small_n_segment = n_segment.len() <= min_n_domain_len;
+        bool merged = false;
 
         for(auto it_segment = segments.begin(); it_segment != segments.end(); ) {
             segment_t &segment = *it_segment;
@@ -252,6 +251,7 @@ list<segment_t> merge(list<segment_t> segments,
                 if( small_n_segment && (n_segment.end == segment.start) ) {
                     // It's a small N island, so just prepend it to this segment.
                     segment.start = n_segment.start;
+                    merged = true;
                 }
 
                 ++it_segment;
@@ -261,6 +261,7 @@ list<segment_t> merge(list<segment_t> segments,
                 if( small_n_segment && (n_segment.start == segment.end) ) {
                     // It's a small N island, so just append it to this segment.
                     segment.end = n_segment.end;
+                    merged = true;
                 }
 
                 result.push_back(segment);
@@ -272,6 +273,7 @@ list<segment_t> merge(list<segment_t> segments,
                 if( small_n_segment ) {
                     // It's a small N island, so just insert it into this segment.
                     segment.end += n_segment.len();
+                    merged = true;
                 } else {
                     segment_t segment_before_n = {segment.start, n_segment.start, segment.entropy};
                     result.push_back(segment_before_n);
@@ -284,9 +286,14 @@ list<segment_t> merge(list<segment_t> segments,
             }
         }
 
-        if(!small_n_segment) {
+        if(!merged) {
             result.push_back( {n_segment.start, n_segment.end, 0.0} );
         }
+    }
+
+    // There will be some remaining if the sequence didn't end with an N island.
+    for(auto &segment: segments) {
+        result.push_back(segment);
     }
 
     {
@@ -304,13 +311,6 @@ list<segment_t> merge(list<segment_t> segments,
             result.insert(it_last, filler);
         }
     }
-
-    // Sanity check
-    assert(result.front().start == 0);
-    for(auto it = result.begin(); next(it) != result.end(); it++) {
-        assert(it->end == next(it)->start);
-    }
-    assert(result.back().end == seqlen);
 
     return result;
 }
@@ -398,6 +398,16 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
 
     list<segment_t> result = merge(segments, n_segments, min_n_domain_len);
 
+    // Sanity check
+    assert(result.front().start == 0);
+    for(auto it = result.begin(); next(it) != result.end(); it++) {
+        assert(it->end == next(it)->start);
+    }
+    // If it ends with an N island, it will have the original seqlen.
+    // Otherwise, it will be truncated to a window border.
+    assert( (result.back().end == seqlen) || (result.back().end == ( (seqlen / winlen - 1) * winlen )) );
+
+    // Round down to window border.
     result.back().end = (result.back().end / winlen) * winlen;
 
     return result;

@@ -1,11 +1,16 @@
 #include "util.h"
 
+#include <assert.h>
+
 #include "isoplotter.h"
 #include "pna.h"
 
 int main(int argc, char* argv[])
 {
-    const char *path = "test/seq/chr22.pna";
+    assert(argc == 2);
+
+    //const char *path = "test/seq/chr22.pna";
+    const char *path = argv[1];
 
     seqio::PnaReader reader(path);
     std::shared_ptr<seqio::PnaSequenceReader> seq = reader.openSequence(0);
