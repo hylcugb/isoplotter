@@ -7,35 +7,31 @@
 #include <list>
 
 #include "gc_sum.h"
+#include "isoplotter.cuh"
 #include "isoplotter.h"
 #include "util.h"
 
 using namespace std;
 
-#define WINLEN 32 //tmp
+struct n_segment_t {
+    uint64_t start;
+    uint64_t end;
 
-double gcmean(uint64_t gcsum, size_t winlen, uint64_t nwins) {
-    return double(gcsum) / (winlen * nwins);
-}
+    uint64_t len() {
+        return end - start;
+    }
+};
 
-double entropy(double gcmean, double atmean) {
-    return -(gcmean * log2(gcmean) + atmean * log2(atmean));
-}
-
-double entropy(double gcmean) {
-    return entropy(gcmean, 1 - gcmean);
-}
-
-void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) const {
+__device__ __host__ void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) const {
     assert( (midpoint > 0) && (midpoint < len()) );
 
     left.start = this->start;
     left.end = this->start + midpoint;
-    left.entropy = ::entropy( ::gcmean( gc_sum.get(midpoint-1), WINLEN, left.len()) );
+    left.entropy = ::entropy( gc_sum.get(midpoint-1) / left.len() );
 
     right.start = left.end;
     right.end = this->end;
-    right.entropy = ::entropy( ::gcmean( gc_sum.get_reverse(midpoint), WINLEN, right.len() ) );
+    right.entropy = ::entropy( gc_sum.get_reverse(midpoint) / right.len() );
 
     gc_sum.split(midpoint, left.gc_sum, right.gc_sum);
     gc_sum2.split(midpoint, left.gc_sum2, right.gc_sum2);
@@ -43,8 +39,8 @@ void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) cons
 
 double stddev(gc_sum_t gc_sum, gc_sum_t gc_sum2) {
     uint64_t n = gc_sum.length();
-    double sum = gc_sum.get(n - 1) / double(n);
-    double sum2 = gc_sum2.get(n - 1) / double(n * n);
+    double sum = gc_sum.get(n - 1);
+    double sum2 = gc_sum2.get(n - 1);
     
     return sqrt( (sum2 - sum*sum/n) / n );
 }
@@ -62,8 +58,6 @@ pair<segment_t, segment_t> divide_segment(segment_t segment, double &Djs) {
     pair<segment_t, segment_t> result;
 
     for(size_t i = 0; i < segment.len() - 1; i++) {
-        size_t midpoint = segment.start + i + 1;
-
         pair<segment_t, segment_t> candidate;
         segment.split(i+1, candidate.first, candidate.second);        
 
@@ -167,16 +161,18 @@ list<segment_t> merge(list<segment_t> segments,
     return result;
 }
 
-void create_win_gc(char *seq, size_t seqlen, size_t winlen, uint64_t **out_gc_, uint64_t **out_gc2, size_t &out_nwins, list<n_segment_t> &out_n_segments) {
-    int win_bases_count = 0;
-    uint64_t gc_count_ = 0;
+void create_win_gc(char *seq, size_t seqlen, size_t winlen, double **out_gc_, double **out_gc2, size_t &out_nwins, list<n_segment_t> &out_n_segments) {
+    size_t win_bases_count = 0;
+    double gc_mean_accum = 0.0;
+    double gc_mean_accum2 = 0.0;
+    uint64_t gc_count_win = 0;
     
     out_nwins = 0;
-    *out_gc_ = new uint64_t[seqlen / winlen + 1];
-    (*out_gc_)[0] = 0;
+    *out_gc_ = new double[seqlen / winlen + 1];
+    (*out_gc_)[0] = 0.0;
 
-    *out_gc2 = new uint64_t[seqlen / winlen + 1];
-    (*out_gc2)[0] = 0;
+    *out_gc2 = new double[seqlen / winlen + 1];
+    (*out_gc2)[0] = 0.0;
     
     size_t i = 0;
     while(i < seqlen) {
@@ -191,14 +187,17 @@ void create_win_gc(char *seq, size_t seqlen, size_t winlen, uint64_t **out_gc_, 
             out_n_segments.push_back(n_segment);
         } else {
             if( (base == 'G') || (base == 'C') ) {
-                gc_count_++;
+                gc_count_win++;
             }
             if(++win_bases_count == winlen) {
-                (*out_gc_)[out_nwins + 1] = gc_count_;
-                uint64_t prev_win_count = gc_count_ - (*out_gc_)[out_nwins];
-                (*out_gc2)[out_nwins + 1] = (*out_gc2)[out_nwins] + prev_win_count * prev_win_count;
+                double gc_mean = double(gc_count_win) / winlen;
+                gc_mean_accum += gc_mean;
+                gc_mean_accum2 += gc_mean * gc_mean;
+                (*out_gc_)[out_nwins + 1] = gc_mean_accum;
+                (*out_gc2)[out_nwins + 1] = gc_mean_accum2;
                 out_nwins++;
                 win_bases_count = 0;
+                gc_count_win = 0;
             }
 
             i++;
@@ -211,21 +210,19 @@ void create_win_gc(char *seq, size_t seqlen, size_t winlen, uint64_t **out_gc_, 
 }
 
 list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t mindomainlen, size_t min_n_domain_len) {
-    assert(winlen==WINLEN); // tmp
-
     mindomainlen /= winlen;
 
-    uint64_t *gc_;
-    uint64_t *gc2;
+    double *gc_;
+    double *gc2;
     size_t nwins;
     list<n_segment_t> n_segments;
 
     create_win_gc(seq, seqlen, winlen, &gc_, &gc2, nwins, n_segments);
 
-    gc_sum_t sum = create_gc_sum(gc_, nwins);
-    gc_sum_t sum2 = create_gc_sum(gc2, nwins);
+    gc_sum_t sum = create_gc_sum(gc_, nwins, true);
+    gc_sum_t sum2 = create_gc_sum(gc2, nwins, false);
 
-    list<segment_t> segments = { create_segment(0, nwins, entropy( gcmean(sum.get(nwins-1), winlen, nwins) )) };
+    list<segment_t> segments = { create_segment(0, nwins, entropy( sum.get(nwins-1) / nwins )) };
     segments.front().gc_sum = sum;
     segments.front().gc_sum2 = sum2;
 
@@ -254,8 +251,8 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
         }
     }
 
-    delete [] gc_;
-    delete [] gc2;
+    dispose_gc_sum(sum);
+    dispose_gc_sum(sum2);
 
     for(auto &seg: segments) {
         seg.start = seg.start * winlen;
