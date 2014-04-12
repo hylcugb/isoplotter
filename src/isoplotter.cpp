@@ -275,6 +275,12 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
 
     for(list<segment_t>::iterator it = segments.begin(); it != segments.end(); ) {
         segment_t segment = *it;
+        if(segment.len() <= (mindomainlen*2)) {
+            // No point in trying to divide it.
+            ++it;
+            continue;
+        }
+
         double Djs;
         pair<segment_t, segment_t> subsegments = divide_segment(segment, Djs);
 
@@ -285,15 +291,21 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
 	    
         if( (subsegments.first.len() <= mindomainlen)
             || (subsegments.second.len() <= mindomainlen) ) {
-            //cout << "  REJECT" << endl;
+            // One of the segments is smaller than allowed, so don't accept
+            // the division and move on to the next segment.
             ++it;
         } else if( log_Djs <= dt ) {
+            // Divergence not high enough, so reject division and move on
+            // to next segment.
             ++it;
-            //cout << "  REJECT" << endl;
         } else {
+            // Division is acceptable.
             list<segment_t>::iterator it_insert = it;
 
+            // Overwrite current segment in list with left partition.
             *it_insert = subsegments.first;
+            
+            // Add right partition to list.
             segments.insert(++it_insert, subsegments.second);
         }
     }
