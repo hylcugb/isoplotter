@@ -22,7 +22,7 @@ struct n_segment_t {
     }
 };
 
-__device__ __host__ void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) const {
+void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) const {
     assert( (midpoint > 0) && (midpoint < len()) );
 
     left.start = this->start;
@@ -53,13 +53,59 @@ segment_t create_segment(size_t start, size_t end, double entropy) {
     return {start, end, entropy};
 }
 
+
+uint64_t find_best_split_cpu(segment_t segment) {
+    double Djs = 0.0f;
+    size_t i_best = 2;
+
+    for(size_t i = 2; i < segment.len(); i++) {
+        uint64_t len_left = i;
+        uint64_t len_right = segment.len() - i;
+        double entropy_left = entropy( segment.gc_sum.get(i-1) / len_left );
+        double entropy_right = entropy( segment.gc_sum.get_reverse(i) / len_right );
+        double weighted_entropy_left = double(len_left) / segment.len() * entropy_left;
+        double weighted_entropy_right = double(len_right) / segment.len() * entropy_right;
+
+        double candidateDjs = segment.entropy - (weighted_entropy_left + weighted_entropy_right);
+        if(i == 2 || candidateDjs > Djs) {
+              Djs = candidateDjs;
+            i_best = i;
+        }
+    }
+
+    return i_best;
+}
+
+pair<segment_t, segment_t> divide_segment(segment_t segment, double &Djs) {
+    uint64_t i;
+    if(segment.len() > 2000) {
+        i = find_best_split_cuda(segment);
+    } else {
+        i = find_best_split_cpu(segment);
+    }
+
+    pair<segment_t, segment_t> result;
+    segment.split(i, result.first, result.second);        
+
+    pair<double, double> weightedEntropy = {
+        (double(result.first.len())/segment.len()) * result.first.entropy,
+        (double(result.second.len())/segment.len()) * result.second.entropy
+    };
+
+    Djs = segment.entropy - (weightedEntropy.first + weightedEntropy.second);
+
+    return result;
+}
+
+
+/*
 pair<segment_t, segment_t> divide_segment(segment_t segment, double &Djs) {
     Djs = 0.0f;
     pair<segment_t, segment_t> result;
 
-    for(size_t i = 0; i < segment.len() - 1; i++) {
+    for(size_t i = 2; i < segment.len(); i++) {
         pair<segment_t, segment_t> candidate;
-        segment.split(i+1, candidate.first, candidate.second);        
+        segment.split(i, candidate.first, candidate.second);        
 
         pair<double, double> weightedEntropy = {
             (double(candidate.first.len())/segment.len()) * candidate.first.entropy,
@@ -67,7 +113,7 @@ pair<segment_t, segment_t> divide_segment(segment_t segment, double &Djs) {
         };
 
         double candidateDjs = segment.entropy - (weightedEntropy.first + weightedEntropy.second);
-        if(i == 1 || candidateDjs > Djs) {
+        if(i == 2 || candidateDjs > Djs) {
             result = candidate;
             Djs = candidateDjs;
         }
@@ -75,6 +121,7 @@ pair<segment_t, segment_t> divide_segment(segment_t segment, double &Djs) {
 
     return result;
 }
+*/
 
 list<segment_t> merge(list<segment_t> segments,
                       list<n_segment_t> n_segments,
