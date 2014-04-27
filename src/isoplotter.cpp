@@ -37,12 +37,21 @@ void segment_t::split(uint64_t midpoint, segment_t &left, segment_t &right) cons
     gc_sum2.split(midpoint, left.gc_sum2, right.gc_sum2);
 }
 
-double stddev(gc_sum_t gc_sum, gc_sum_t gc_sum2) {
+double mean(gc_sum_t gc_sum) {
+    uint64_t n = gc_sum.length();
+    double sum = gc_sum.get(n - 1);
+
+    return sum / n;
+}
+
+double stddev(gc_sum_t gc_sum, gc_sum_t gc_sum2, bool sample = false) {
     uint64_t n = gc_sum.length();
     double sum = gc_sum.get(n - 1);
     double sum2 = gc_sum2.get(n - 1);
+
+    double divisor = sample ? n - 1 : n;
     
-    return sqrt( (sum2 - sum*sum/n) / n );
+    return sqrt( (sum2 - sum*sum/n) / divisor );
 }
 
 double dynamic_threshold(segment_t segment, size_t winlen) {
@@ -180,7 +189,7 @@ list<segment_t> merge(list<segment_t> segments,
         }
 
         if(!merged) {
-            result.push_back( {n_segment.start, n_segment.end, 0.0} );
+            result.push_back( {n_segment.start, n_segment.end, 0.0, 0.0, 0.0} );
         }
     }
 
@@ -189,7 +198,7 @@ list<segment_t> merge(list<segment_t> segments,
         result.push_back(segment);
     }
 
-    {
+    if(result.size() > 1) {
         // Since we drop the last 1 or 2 windows initially, there's going to be
         // a gap if the last segment is an N segment. Consistent with Matlab version,
         // we just insert a tiny segment with the same entropy.
@@ -310,14 +319,18 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
         }
     }
 
-    dispose_gc_sum(sum);
-    dispose_gc_sum(sum2);
-
     for(auto &seg: segments) {
         seg.start = seg.start * winlen;
         seg.end = seg.end * winlen;
     }
     segments.back().end = nwins * winlen;
+
+    for(auto &seg: segments) {
+        seg.gc_mean = mean(seg.gc_sum);
+        seg.gc_stddev = stddev(seg.gc_sum, seg.gc_sum2);
+    }
+    dispose_gc_sum(sum);
+    dispose_gc_sum(sum2);
 
     list<segment_t> result = merge(segments, n_segments, min_n_domain_len);
 
@@ -326,9 +339,10 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
     for(auto it = result.begin(); next(it) != result.end(); it++) {
         assert(it->end == next(it)->start);
     }
+    // The end is a bit unpredictable with N island injection. Just make sure it's sane.
     // If it ends with an N island, it will have the original seqlen.
     // Otherwise, it will be truncated to a window border.
-    assert( (result.back().end == seqlen) || (result.back().end == ( (seqlen / winlen - 1) * winlen )) );
+    assert( abs(seqlen - result.back().end) < (winlen * 3) );
 
     // Round down to window border.
     result.back().end = (result.back().end / winlen) * winlen;

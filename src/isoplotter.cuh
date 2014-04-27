@@ -10,10 +10,13 @@
 __device__ __host__ double entropy(double gcmean, double atmean);
 __device__ __host__ double entropy(double gcmean);
 
-struct segment_t {
+struct segment_t { // todo: make a "result" segment that has gc_mean... make this a purely
+                   //       intermediate/computational structure.
     uint64_t start;
     uint64_t end;
     double entropy;
+    double gc_mean;
+    double gc_stddev;
     gc_sum_t gc_sum;
     gc_sum_t gc_sum2;
 
