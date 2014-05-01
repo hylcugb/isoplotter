@@ -17,6 +17,7 @@ struct segment_t { // todo: make a "result" segment that has gc_mean... make thi
     double entropy;
     double gc_mean;
     double gc_stddev;
+    bool homo;
     gc_sum_t gc_sum;
     gc_sum_t gc_sum2;
 

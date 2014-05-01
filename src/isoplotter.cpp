@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <list>
+#include <boost/math/distributions/fisher_f.hpp>
 
 #include "gc_sum.h"
 #include "isoplotter.cuh"
@@ -12,6 +13,8 @@
 #include "util.h"
 
 using namespace std;
+
+const double Alpha = 0.05;
 
 struct n_segment_t {
     uint64_t start;
@@ -44,14 +47,45 @@ double mean(gc_sum_t gc_sum) {
     return sum / n;
 }
 
-double stddev(gc_sum_t gc_sum, gc_sum_t gc_sum2, bool sample = false) {
+double variance(gc_sum_t gc_sum, gc_sum_t gc_sum2) {
     uint64_t n = gc_sum.length();
+    assert(n > 1);
     double sum = gc_sum.get(n - 1);
     double sum2 = gc_sum2.get(n - 1);
 
-    double divisor = sample ? n - 1 : n;
-    
-    return sqrt( (sum2 - sum*sum/n) / divisor );
+    return (sum2 - sum*sum/n) / n;
+}
+
+double stddev(gc_sum_t gc_sum, gc_sum_t gc_sum2) {
+    return sqrt( variance(gc_sum, gc_sum2) );
+}
+
+void make_homogeneity_sums(gc_sum_t gc_sum, gc_sum_t gc_sum2) {
+    uint64_t n = gc_sum.length();
+    assert(n == gc_sum2.length());
+
+    double gc_proportion_accum = 0.0;
+    double f_accum = 0.0;
+    double f2_accum = 0.0;
+    for(uint64_t i = 0; i < n; i++) {
+        double gc_proportion = gc_sum.cumsum[i] - gc_proportion_accum;
+        assert(gc_proportion >= 0.0 && gc_proportion <= 1.0);
+        gc_proportion_accum += gc_proportion;
+        
+        double fval = asin(sqrt(gc_proportion));
+        f_accum += fval;
+        f2_accum += fval * fval;
+        gc_sum.cumsum[i] = f_accum;
+        gc_sum2.cumsum[i] = f2_accum;
+    }
+}
+
+double homogeneity_test(uint64_t df1, double var1, uint64_t df2, double var2) {
+    double F = var1 / var2;
+    boost::math::fisher_f fdist(df1, df2);
+    double pvalue = boost::math::cdf(fdist, F);
+
+    return pvalue;
 }
 
 double dynamic_threshold(segment_t segment, size_t winlen) {
@@ -189,7 +223,7 @@ list<segment_t> merge(list<segment_t> segments,
         }
 
         if(!merged) {
-            result.push_back( {n_segment.start, n_segment.end, 0.0, 0.0, 0.0} );
+            result.push_back( {n_segment.start, n_segment.end, 0.0, 0.0, 0.0, false} );
         }
     }
 
@@ -219,8 +253,8 @@ list<segment_t> merge(list<segment_t> segments,
 
 void create_win_gc(char *seq, size_t seqlen, size_t winlen, double **out_gc_, double **out_gc2, size_t &out_nwins, list<n_segment_t> &out_n_segments) {
     size_t win_bases_count = 0;
-    double gc_mean_accum = 0.0;
-    double gc_mean_accum2 = 0.0;
+    double gc_proportion_accum = 0.0;
+    double gc_proportion_accum2 = 0.0;
     uint64_t gc_count_win = 0;
     
     out_nwins = 0;
@@ -246,11 +280,11 @@ void create_win_gc(char *seq, size_t seqlen, size_t winlen, double **out_gc_, do
                 gc_count_win++;
             }
             if(++win_bases_count == winlen) {
-                double gc_mean = double(gc_count_win) / winlen;
-                gc_mean_accum += gc_mean;
-                gc_mean_accum2 += gc_mean * gc_mean;
-                (*out_gc_)[out_nwins + 1] = gc_mean_accum;
-                (*out_gc2)[out_nwins + 1] = gc_mean_accum2;
+                double gc_proportion = double(gc_count_win) / winlen;
+                gc_proportion_accum += gc_proportion;
+                gc_proportion_accum2 += gc_proportion * gc_proportion;
+                (*out_gc_)[out_nwins + 1] = gc_proportion_accum;
+                (*out_gc2)[out_nwins + 1] = gc_proportion_accum2;
                 out_nwins++;
                 win_bases_count = 0;
                 gc_count_win = 0;
@@ -320,15 +354,59 @@ list<segment_t> find_isochores(char *seq, size_t seqlen, size_t winlen, size_t m
     }
 
     for(auto &seg: segments) {
+        seg.gc_mean = mean(seg.gc_sum);
+        seg.gc_stddev = stddev(seg.gc_sum, seg.gc_sum2);
+    }
+
+    make_homogeneity_sums(sum, sum2);
+    {
+        uint64_t df2 = sum.length() - 1;
+        double var2 = variance(sum, sum2);
+
+        const size_t nsegments = segments.size();
+
+        struct pvalue_t {
+            segment_t *seg;
+            double pvalue;
+        } pvalues[nsegments];
+        pvalue_t *pvalues_curr = pvalues;
+
+        for(auto &seg: segments) {
+            uint64_t df1 = seg.gc_sum.length() - 1;
+
+            seg.gc_sum.sum_begin = seg.gc_sum.cumsum[seg.start - 1]; // todo: hack
+            seg.gc_sum2.sum_begin = seg.gc_sum2.cumsum[seg.start - 1]; // todo: hack
+            double var1 = variance(seg.gc_sum, seg.gc_sum2);
+
+            pvalues_curr->seg = &seg;
+            pvalues_curr->pvalue = homogeneity_test(df1, var1, df2, var2);
+            pvalues_curr++;
+        }
+
+        sort(pvalues, pvalues + nsegments, [] (const pvalue_t &a, const pvalue_t &b) {
+                return a.pvalue < b.pvalue;
+            });
+
+        for(pvalues_curr = pvalues + nsegments - 1; pvalues_curr >= pvalues; pvalues_curr--) {
+            double i = pvalues_curr - pvalues + 1;
+            double corrected_alpha = Alpha * (i / nsegments);
+            if(pvalues_curr->pvalue <= corrected_alpha) {
+                break;
+            } else {
+                pvalues_curr->seg->homo = false;
+            }
+        }
+        for(; pvalues_curr >= pvalues; pvalues_curr--) {
+            pvalues_curr->seg->homo = true;
+        }
+    }
+
+    for(auto &seg: segments) {
         seg.start = seg.start * winlen;
         seg.end = seg.end * winlen;
     }
     segments.back().end = nwins * winlen;
 
-    for(auto &seg: segments) {
-        seg.gc_mean = mean(seg.gc_sum);
-        seg.gc_stddev = stddev(seg.gc_sum, seg.gc_sum2);
-    }
     dispose_gc_sum(sum);
     dispose_gc_sum(sum2);
 

@@ -14,7 +14,7 @@ int main(int argc, char* argv[])
     seqio::PnaReader reader(path);
 
     for(int i = 0; i < (int)reader.getSequenceCount(); i++) {
-    //int i = 13; {
+    //int i = 0; {
         std::shared_ptr<seqio::PnaSequenceReader> seq = reader.openSequence(i);
         char *bases = new char[seq->size()];
         seq->read(bases, seq->size());
@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
                                                        3008,
                                                        50000);
         for(auto seg: segments) {
-            dbf("%d\t%10lu\t%10lu\t%10lu\t%.3f\t%.4f", i+1, seg.start+1, seg.end, seg.len(), seg.gc_mean, seg.gc_stddev);
+            dbf("%d\t%10lu\t%10lu\t%10lu\t%.3f\t%.4f\t%d", i+1, seg.start+1, seg.end, seg.len(), seg.gc_mean, seg.gc_stddev, seg.homo);
         }
 
         delete [] bases;
