@@ -1,0 +1,13 @@
+# Compile files in Matlab
+mcc -m -I 'D:\My Documents\Programming\MatLab\Work\' -d 'D:\' PlotGenome; 
+mcc -m -I 'D:\My Documents\Programming\MatLab\Work\' -d 'D:\' PlotSegLengthGC; 
+mcc -m -I 'D:\My Documents\Programming\MatLab\Work\' -d 'D:\' PlotSpatialGC;
+mcc -m -I 'D:\My Documents\Programming\MatLab\Work\' -d 'D:\' RunIsoPlotterPipeline;
+
+# Test executable functions
+PlotGenome D:\Temp\Testing\Example\seg_no_ns_H.txt d:\PlotGenome.tif
+PlotSegLengthGC D:\Temp\Testing\Example\seg_no_ns_H.txt d:\PlotSegLengthGC.tif
+PlotSpatialGC D:\Temp\Testing\Example\seg_no_ns_H.txt 1 d:\PlotSpatialGC.tif
+
+RunIsoPlotterPipeline D:\Temp\Testing\File\ D:\Temp\Testing\Output\
+
