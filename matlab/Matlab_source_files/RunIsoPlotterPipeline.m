@@ -53,25 +53,26 @@ function RunIsoPlotterPipeline(input_dir, output_dir, domain_min_size, ns_domain
     end;
     
     %QC folder size
-    if input_dir(end)~='\'
-        error_message('Input dir, must be a folder, add \ at the end');
-        return;
+    if ~exist(input_dir, 'dir')
+        error('Input dir must be an existing directory.');
     end;
-    if output_dir(end)~='\'
-        error_message('Output dir, must be a folder, add \ at the end');
-        return;
+    if ~exist(output_dir, 'dir')
+        error('Output dir must be an existing directory.');
     end;
 
-    %Identify "species" name (last folder in path)
-%     temp = strfind(input_dir(1:end-1),'\');
-%     species = input_dir(temp(end)+1:end-1);
+    if input_dir(end) ~= filesep
+        input_dir = [input_dir filesep];
+    end;
+    if output_dir(end) ~= filesep
+        output_dir = [output_dir filesep];
+    end;
 
     %Define directories
-    output_List_ns_dir = (['1.List_ns\']);
-    output_Seq_bp_dir = (['2.Seq_32bp\']);
-    output_IsoPlotter_dir = (['3.IsoPlotter_no_ns\']);
-    output_H_test_dir = (['4.IsoPlotter_no_ns_H\']);
-    output_H_test_ns_dir = (['5.IsoPlotter_ns_H\']);
+    output_List_ns_dir = (['1.List_ns' filesep]);
+    output_Seq_bp_dir = (['2.Seq_32bp' filesep]);
+    output_IsoPlotter_dir = (['3.IsoPlotter_no_ns' filesep]);
+    output_H_test_dir = (['4.IsoPlotter_no_ns_H' filesep]);
+    output_H_test_ns_dir = (['5.IsoPlotter_ns_H' filesep]);
     
     disp('Creating subfolders...');
     mkdir(output_dir, output_List_ns_dir);
