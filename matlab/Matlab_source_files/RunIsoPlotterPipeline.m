@@ -44,12 +44,12 @@ function RunIsoPlotterPipeline(input_dir, output_dir, domain_min_size, ns_domain
     if nargin==2
         domain_min_size = 3008; %default smallest compositional domain size
         ns_domain_min_size = 50000; %default ns island domain name
-        win_size = 32; %defauly windows size to measure GC%
+        win_size = 32; %default windows size to measure GC%
     elseif nargin==3 
         ns_domain_min_size = 50000; %default ns island domain name
-        win_size = 32; %defauly windows size to measure GC%
+        win_size = 32; %default windows size to measure GC%
     elseif nargin==4
-        win_size = 32; %defauly windows size to measure GC%
+        win_size = 32; %default windows size to measure GC%
     end;
     
     %QC folder size
