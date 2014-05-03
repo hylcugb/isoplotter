@@ -99,13 +99,13 @@ sig_domains = max(find(pi<=y));
 % Ver 2.00 - correction
 %Reject all null hypotheses H(1) … H(k). so they are all H1 - more homogeneous than the chr
 if ~isempty(sig_domains)
-    disp('sig_domains is empty')
-    Homogeneous_domains_in_analysis = find(I<=sig_domains)'; %These are the indexes of the long H domains --corrected--
+    Homogeneous_domains_in_analysis = I(1:sig_domains)'; %These are the indexes of the long H domains --corrected--
     putative_h_domains = length(Homogeneous_domains_in_analysis);
 
     %Save indexes of nonhomogeneous domains
-    under_domains_indexes = Djs_long_domain_ind(find(I>sig_domains)'); %everything larger than the sig is non-H
+    under_domains_indexes = I(sig_domains+1:end)'; %everything larger than the sig is non-H
 else
+    disp('sig_domains is empty')
     Homogeneous_domains_in_analysis = [];
     putative_h_domains = 0;
     under_domains_indexes = numel(I);
@@ -121,7 +121,7 @@ h_segments = putative_h_domains/length(Djs_long_domain_ind);
 
 %     Check that all proportions sum to 1
 if abs(non_h_segments+h_segments-1)>0.001 
-    disp('Warning! Statistics do not sum to 1. Your sequence may be very short to qualify fot the test');
+    disp('Warning! Statistics do not sum to 1. Your sequence may be very short to qualify for the test');
     disp([non_h_segments+h_segments])
 end;
 
