@@ -173,7 +173,7 @@ end
 %[df2,vary] = getstats(y,dim);
 
 % Compute F statistic
-F = NaN(size(varx),superiorfloat(varx,vary));
+F = NaN(size(varx),'double');
 t1 = (vary>0);
 F(t1) = varx(t1) ./ vary(t1);
 t2 = (varx>0) & ~t1;
