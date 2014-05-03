@@ -34,7 +34,7 @@ function OrganizeIsoPlotter(input_dir, output_filename)
         %If this is a chromosomal file, it would contain the string 'chr':
         if findstr(genome_source_file,'chr')
             chr_name = genome_source_file(findstr(genome_source_file,'chr')+3:max(findstr(genome_source_file,'.'))-1);
-            chr_num = str2num(chr_name(min(regexp(chr_name, '[1-9]')):max(regexp(chr_name, '[1-9]')))); %convert to numeric
+            chr_num = str2num(chr_name(min(regexp(chr_name, '[0-9]')):max(regexp(chr_name, '[0-9]')))); %convert to numeric
             disp(['        Merging : ' genome_source_file ' file #' num2str(chr_num) '.']);
 
         %if this is a scaffold, simply number the files according to their order in the directory
