@@ -68,7 +68,7 @@ while StopSegmentation<1,
     StopSegmentation=1;
 
     %Get fromto sizes (2 vecors with from and to)
-    fromto = [mat(1:1:end-1) mat(2:1:end)];
+    fromto = [mat(1:1:end-1) mat(2:1:end)-1];
 
     %Run on the length of the vecotr and for each border
     for i=1:size(fromto,1)
@@ -76,13 +76,13 @@ while StopSegmentation<1,
 
         %Calculate dynamic threshold
         log_std_seq = log(std(dat( fromto(i,1):fromto(i,2))./win_size));
-        log_len_seq = log((fromto(i,2)-fromto(i,1)).*win_size);
+        log_len_seq = log((fromto(i,2)-fromto(i,1)+1).*win_size);
         toplim = -0.975*log_len_seq + (0.699*log_std_seq + 1.1866);          
         
         %If the matrix is not empty, test if reached its limits
         if ((size(parm,2)) ~= 0)
             %If all conditions regarding threshold, min seg, and min sd
-            if ( log(parm(2))>toplim && parm(1)>sizelim && (fromto(i,2)-parm(1)-fromto(i,1)>sizelim) )    
+            if ( log(parm(2))>toplim && parm(1)>sizelim && (fromto(i,2)+1-parm(1)-fromto(i,1)>sizelim) )    
                 mat = [mat; fromto(i,1)+parm(1)];
                 StopSegmentation = 0;
             end;
@@ -95,8 +95,8 @@ while StopSegmentation<1,
 end;
 
 %Finalize vector
-fromto = [mat(1:1:end-1) mat(2:1:end)];         %Convert to 2 columns format
-fromto32 = fromto*win_size; fromto32(:,1)=fromto32(:,1)+1; fromto32(1) = 1;    %Convert to Xbp format
+fromto = [mat(1:end-1) mat(2:end)-1];         %Convert to 2 columns format
+fromto32 = [(fromto(:,1)-1)*win_size+1 fromto(:,2)*win_size]; %Convert to Xbp format
 
 %Calculate statistics for each domain: mean, std
 iso_statistics = zeros(2,size(fromto32,1));
