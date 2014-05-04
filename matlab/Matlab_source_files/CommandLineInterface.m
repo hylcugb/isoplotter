@@ -1,9 +1,9 @@
-function CommandLineInterface(args)
-    if isempty(args)
+function CommandLineInterface(varargin)
+    if isempty(varargin)
         usage();
     end
 
-    [opts args] = parse_args(struct(), args);
+    [opts args] = parse_args(struct(), varargin);
 
     if length(args) < 1
         err("Missing mode");
@@ -122,5 +122,3 @@ function usage()
 
     exit(0)
 end
-
-CommandLineInterface(argv())
