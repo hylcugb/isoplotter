@@ -2,4 +2,5 @@
 
 set srcdir=%~dp0\Matlab_source_files
 
-octave -p %srcdir% -q %srcdir%\CommandLineInterface.m %*
+set cmd="CommandLineInterface %*"
+octave --traditional -q -p %srcdir% --eval %cmd%
