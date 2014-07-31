@@ -23,3 +23,6 @@ bld/cuda/%.o: src/%.cu Makefile
 clean:
 	rm -f isoplotter
 	rm -rf bld
+
+install:
+	cp isoplotter /usr/local/bin
