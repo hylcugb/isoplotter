@@ -53,6 +53,8 @@ function CommandLineInterface(varargin)
       otherwise
         err(['Invalid mode: ' mode])
     end
+
+    exit(0)
 end
 
 function [numval] = arg_num(argname, argval)
